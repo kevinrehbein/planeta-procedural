@@ -3,19 +3,81 @@
 var vertexShaderSource = `#version 300 es
 
 in vec4 a_position;
-in vec4 a_color;
 
 uniform mat4 u_matrix;
+uniform float u_height;
+uniform float u_seaLevel;
+uniform int u_noiseType;
 
 out vec4 v_color;
 
+// Funções auxiliares
+
+float rand(vec3 c) {
+  return fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+}
+
+vec3 fade(vec3 t) {
+  return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+// Perlin noise
+
+float perlin(vec3 p) {
+  vec3 pi = floor(p);
+  vec3 pf = fract(p);
+
+  vec3 w = fade(pf);
+
+  float n000 = rand(pi + vec3(0,0,0));
+  float n001 = rand(pi + vec3(0,0,1));
+  float n010 = rand(pi + vec3(0,1,0));
+  float n011 = rand(pi + vec3(0,1,1));
+  float n100 = rand(pi + vec3(1,0,0));
+  float n101 = rand(pi + vec3(1,0,1));
+  float n110 = rand(pi + vec3(1,1,0));
+  float n111 = rand(pi + vec3(1,1,1));
+
+  float nx00 = mix(n000, n100, w.x);
+  float nx01 = mix(n001, n101, w.x);
+  float nx10 = mix(n010, n110, w.x);
+  float nx11 = mix(n011, n111, w.x);
+
+  float nxy0 = mix(nx00, nx10, w.y);
+  float nxy1 = mix(nx01, nx11, w.y);
+
+  return mix(nxy0, nxy1, w.z);
+}
+
 void main() {
 
-  gl_Position = u_matrix * a_position;
+  vec3 pos = a_position.xyz;
+  vec3 normal = normalize(pos);
 
-  v_color = a_color;
-}
-`;
+  float noiseValue;
+
+  if (u_noiseType == 0) {
+    noiseValue = perlin(normal * 4.0);
+  } else {
+    noiseValue = rand(normal * 10.0);
+  }
+
+  float height = noiseValue * u_height;
+
+  vec3 displacedPosition = pos + normal * height;
+
+  // Cores por threshold
+
+  if (height < u_seaLevel) {
+    v_color = vec4(0.0, 0.3, 0.7, 1.0); // Mar
+  } else if (height < u_seaLevel + 0.05) {
+    v_color = vec4(0.9, 0.8, 0.6, 1.0); // Praia
+  } else {
+    v_color = vec4(0.1, 0.6, 0.2, 1.0); //  Terra
+  }
+
+  gl_Position = u_matrix * vec4(displacedPosition, 1.0);
+}`;
 
 var fragmentShaderSource = `#version 300 es
 
@@ -29,7 +91,6 @@ void main() {
   outColor = v_color;
 }
 `;
-
 
 function main() {
   
@@ -61,60 +122,52 @@ function main() {
   gl.useProgram(program);
 
   var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
-  var colorAttributeLocation = gl.getAttribLocation(program, "a_color");
   var matrixLocation = gl.getUniformLocation(program, "u_matrix");
+  const heightLocation = gl.getUniformLocation(program, "u_height");
+  const seaLevelLocation = gl.getUniformLocation(program, "u_seaLevel");
+  const noiseTypeLocation = gl.getUniformLocation(program, "u_noiseType");
 
-  var resolution = 25;
+  var resolution = 500;
   var sphere = createSphere(resolution);
 
   var vao = gl.createVertexArray();
   gl.bindVertexArray(vao);
 
   var vertexData = new Float32Array(sphere.vertices);
-  var colorData = new Float32Array(sphere.vertices);
-  var indexData = new Uint16Array(sphere.indices);
-
-  console.log(vertexData);
-  console.log(indexData);
+  var indexData = new Uint32Array(sphere.indices);
 
   var vertexBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
-
-  var colorBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, colorData, gl.STATIC_DRAW);
 
   var indexBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
 
   gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
-  gl.vertexAttribPointer(colorAttributeLocation, 3, gl.FLOAT, true, 0, 0);
-
   gl.enableVertexAttribArray(positionAttributeLocation);
-  gl.enableVertexAttribArray(colorAttributeLocation);
 
   gl.bindVertexArray(null);
 
-  var rotation = [degToRad(40), degToRad(180), degToRad(180)];
-  //var rotationSpeed = 1.2;
-  var fieldOfViewRadians = degToRad(0.5);
+  var fieldOfViewRadians = degToRad(60);
   var cameraAngleRadians = degToRad(0);
+  var rotation = degToRad(0);
   var then = 0;
   var deltaTime;
-  var noiseType = 'perlin';
+  let height = 0.45;
+  let seaLevel = 0.15;
+  let noiseType = 0; // 0 = Perlin, 1 = Random
   var objectCount = 10;
+  const rotationSpeed = 0.75;
 
-  render();
-  //requestAnimationFrame(render);
+  requestAnimationFrame(render);
 
   // Setup a ui.
   //Slider de Resolução
   const resInput = document.querySelector("#resRange");
   const resDisp = document.querySelector("#resValue");
 
-  resInput.addEventListener("input", (e) => {
+  resInput.addEventListener("change", (e) => {
     resolution = parseInt(e.target.value);
     resDisp.textContent = resolution;
     sphere = createSphere(resolution);
@@ -125,8 +178,29 @@ function main() {
   const noiseSelector = document.querySelector("#noiseSelect");
 
   noiseSelector.addEventListener("change", (e) => {
-    noiseType = e.target.value;
-    update(); 
+    if (e.target.value === "random") noiseType = 1;
+    else if (e.target.value === "perlin") noiseType = 0;
+    requestAnimationFrame(render);
+  });
+
+  //Altura
+  const heightInput = document.querySelector("#heightRange");
+  const heightDisp = document.querySelector("#heightValue");
+
+  heightInput.addEventListener("change", (e) => {
+    height = parseFloat(e.target.value) / 100;
+    heightDisp.textContent = height;
+    update();
+  });
+
+  //Nível do Mar
+  const seaLevelInput = document.querySelector("#seaLevelRange");
+  const seaLevelDisp = document.querySelector("#seaValue");
+
+  seaLevelInput.addEventListener("change", (e) => {
+    seaLevel = parseFloat(e.target.value) / 100;
+    seaLevelDisp.textContent = seaLevel;
+    update();
   });
 
   //Quantidade de Objetos
@@ -137,37 +211,27 @@ function main() {
     objectCount = parseInt(e.target.value);
     objDisp.textContent = objectCount;
     // Aqui você deve disparar a lógica para reposicionar árvores/objetos
-    render(); 
+    update(); 
   });
 
   function update(){
     gl.bindVertexArray(vao);
 
     vertexData = new Float32Array(sphere.vertices);
-    colorData = new Float32Array(sphere.vertices);
-    indexData = new Uint16Array(sphere.indices);
-
-    console.log(vertexData);
-    console.log(indexData);
+    indexData = new Uint32Array(sphere.indices);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, colorData, gl.STATIC_DRAW);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
 
     gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
-    gl.vertexAttribPointer(colorAttributeLocation, 3, gl.FLOAT, true, 0, 0);
-
     gl.enableVertexAttribArray(positionAttributeLocation);
-    gl.enableVertexAttribArray(colorAttributeLocation);
 
     gl.bindVertexArray(null);
 
-    render();
+    requestAnimationFrame(render);
   }
 
   function resizeCanvasToDisplaySize() {
@@ -187,24 +251,25 @@ function main() {
 
     resizeCanvasToDisplaySize();
     drawScene();
-    //requestAnimationFrame(render);
+    requestAnimationFrame(render);
   }
 
   function drawScene() {
     // Every frame increase the rotation a little.
-    //rotation[1] += rotationSpeed * deltaTime;
-
-    var radius = 200;
+    rotation += rotationSpeed * deltaTime;
+    var radius = 5;
 
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
     // Clear the canvas
     gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.enable(gl.CULL_FACE);
+    gl.frontFace(gl.CCW);
 
     gl.useProgram(program);
 
@@ -213,13 +278,13 @@ function main() {
     // Compute the matrix
     var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
     var zNear = 1;
-    var zFar = 2000;
+    var zFar = 800;
     var projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
 
     var modelPosition = [0, 0, 0]
 
     var cameraMatrix = m4.yRotation(cameraAngleRadians);
-    cameraMatrix = m4.translate(cameraMatrix, 0, 0, radius * 1.5);
+    cameraMatrix = m4.translate(cameraMatrix, 0, 0, radius * 0.8);
 
     var cameraPosition = [cameraMatrix[12], cameraMatrix[13], cameraMatrix[14]];
 
@@ -235,6 +300,7 @@ function main() {
     var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
 
     var modelMatrix = m4.translation(0, 0, 0);
+    modelMatrix = m4.yRotate(modelMatrix, rotation);
 
     var mvpMatrix = m4.multiply(viewProjectionMatrix, modelMatrix);
     /*viewProjectionMatrix = m4.translate(viewProjectionMatrix, translation[0], translation[1], translation[2]);
@@ -243,34 +309,12 @@ function main() {
     viewProjectionMatrix = m4.zRotate(viewProjectionMatrix, rotation[2]);
     viewProjectionMatrix = m4.scale(viewProjectionMatrix, scale[0], scale[1], scale[2]);*/
 
-    //Set the matrix.
     gl.uniformMatrix4fv(matrixLocation, false, mvpMatrix);
+    gl.uniform1f(heightLocation, height);
+    gl.uniform1f(seaLevelLocation, seaLevel);
+    gl.uniform1i(noiseTypeLocation, noiseType);
 
-    gl.drawElements(gl.TRIANGLES, sphere.indices.length, gl.UNSIGNED_SHORT, 0);
-
-    // Draw 'F's in a circle
-    /*
-    for (var ii = 0; ii < 5; ++ii) {
-      var angle = ii * Math.PI * 2 / 5;
-
-      var x = Math.cos(angle) * radius;
-      var z = Math.sin(angle) * radius;
-      var matrix = m4.translate(viewProjectionMatrix, x, 0, z);
-      matrix = m4.xRotate(matrix, degToRad(180));
-      
-      matrix = m4.yRotate(matrix, rotation[1]);
-      //matrix = m4.yRotate(matrix, rotation[1]);
-      //matrix = m4.zRotate(matrix, rotation[2]);
-
-      // Set the matrix.
-      gl.uniformMatrix4fv(matrixLocation, false, matrix);
-
-      // Draw the geometry.
-      var primitiveType = gl.TRIANGLES;
-      var offset = 0;
-      var count = 16 * 6;
-      gl.drawArrays(primitiveType, offset, count);
-    }*/
+    gl.drawElements(gl.TRIANGLES, sphere.indices.length, gl.UNSIGNED_INT, 0);
   }
 }
 
@@ -307,8 +351,8 @@ function createSphere(resolution) {
       const p1 = j * (resolution + 1) + i;
       const p2 = p1 + resolution + 1;
 
-      indices.push(p1, p2, p1 + 1);
-      indices.push(p1 + 1, p2, p2 + 1);
+      indices.push(p1, p1 + 1, p2);
+      indices.push(p1 + 1, p2 + 1, p2);
     }
   }
 
