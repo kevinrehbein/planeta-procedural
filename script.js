@@ -103,20 +103,42 @@ function main() {
   var cameraAngleRadians = degToRad(0);
   var then = 0;
   var deltaTime;
+  var noiseType = 'perlin';
+  var objectCount = 10;
 
   render();
   //requestAnimationFrame(render);
 
   // Setup a ui.
-  //webglLessonsUI.setupSlider("#fieldOfView", {value: radToDeg(fieldOfViewRadians), slide: updateFieldOfView, min: 1, max:10 });
-  webglLessonsUI.setupSlider("#resolution", {value: resolution, slide: updateResolution, min: 10, max: 100});
- 
+  //Slider de Resolução
+  const resInput = document.querySelector("#resRange");
+  const resDisp = document.querySelector("#resValue");
 
-  function updateResolution(event, ui) {
-    resolution = ui.value;
+  resInput.addEventListener("input", (e) => {
+    resolution = parseInt(e.target.value);
+    resDisp.textContent = resolution;
     sphere = createSphere(resolution);
     update();
-  }
+  });
+
+  //Seletor de Ruído
+  const noiseSelector = document.querySelector("#noiseSelect");
+
+  noiseSelector.addEventListener("change", (e) => {
+    noiseType = e.target.value;
+    update(); 
+  });
+
+  //Quantidade de Objetos
+  const objInput = document.querySelector("#objRange");
+  const objDisp = document.querySelector("#objValue");
+
+  objInput.addEventListener("input", (e) => {
+    objectCount = parseInt(e.target.value);
+    objDisp.textContent = objectCount;
+    // Aqui você deve disparar a lógica para reposicionar árvores/objetos
+    render(); 
+  });
 
   function update(){
     gl.bindVertexArray(vao);
@@ -260,46 +282,37 @@ function degToRad(d) {
   return d * Math.PI / 180;
 }
 
-function createSphere(resolution){
-  var i, ai, si, ci;
-  var j, aj, sj, cj;
-  var p1, p2;
-  var vertices = [];
-  var indices = [];
+function createSphere(resolution) {
+  const vertices = [];
+  const indices = [];
 
-  // Vertices
-  for (j = 0; j < resolution; j++) {
-    aj = j * Math.PI / resolution;
-    sj = Math.sin(aj);
-    cj = Math.cos(aj);
+  for (let j = 0; j < resolution; j++) {
+    const v = j / resolution;
+    const theta = v * Math.PI;
 
-    for (i = 0; i <= resolution; i++) {
-      ai = i * 2 * Math.PI / resolution;
-      si = Math.sin(ai);
-      ci = Math.cos(ai);
-      vertices.push(si * sj);  // X
-      vertices.push(cj);       // Y
-      vertices.push(ci * sj);  // Z
+    for (let i = 0; i <= resolution; i++) {
+      const u = i / resolution;
+      const phi = u * 2 * Math.PI;
+
+      const x = Math.sin(theta) * Math.cos(phi);
+      const y = Math.cos(theta);
+      const z = Math.sin(theta) * Math.sin(phi);
+
+      vertices.push(x, y, z);
     }
   }
 
-  // Indices
-  for (j = 0; j < resolution; j++) {
-    for (i = 0; i < resolution; i++) {
-      p1 = j * (resolution+1) + i;
-      p2 = p1 + (resolution+1);
+  for (let j = 0; j < resolution; j++) {
+    for (let i = 0; i < resolution; i++) {
+      const p1 = j * (resolution + 1) + i;
+      const p2 = p1 + resolution + 1;
 
-      indices.push(p1);
-      indices.push(p2);
-      indices.push(p1 + 1);
-
-      indices.push(p1 + 1);
-      indices.push(p2);
-      indices.push(p2 + 1);
+      indices.push(p1, p2, p1 + 1);
+      indices.push(p1 + 1, p2, p2 + 1);
     }
   }
 
-  return {vertices, indices};
+  return { vertices, indices };
 }
 
 var m4 = {

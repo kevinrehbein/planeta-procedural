@@ -13,8 +13,26 @@
     <canvas id="canvas"></canvas>
     <div id="uiContainer">
       <div id="ui">
-        <div id="resolution"></div> 
-        <div id="noiseFunction"></div>
+        <div class="ui-item">
+          <label for="resRange">Resolução:</label>
+          <input type="range" id="resRange" min="10" max="99" value="25">
+          <span id="resValue">25</span>
+        </div>
+
+        <div class="ui-item">
+          <label for="noiseSelect">Ruído:</label>
+          <select id="noiseSelect">
+            <option value="perlin">Perlin Noise</option>
+            <option value="random">Aleatório</option>
+            <option value="simplex">Simplex</option>
+          </select>
+        </div>
+
+        <div class="ui-item">
+          <label for="objRange">Objetos:</label>
+          <input type="range" id="objRange" min="0" max="99" value="10">
+          <span id="objValue">10</span>
+        </div>
       </div>
     </div>
   </body>
