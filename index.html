@@ -4,9 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trabalho Computação Gráfica</title>
-    <script src="./script.js" defer></script>
     <script src="https://webgl2fundamentals.org/webgl/resources/twgl-full.min.js"></script>
     <script src="https://webgl2fundamentals.org/webgl/resources/m4.js"></script>
+    <script src="./planet.js"></script>
+    <script src="./objects.js"></script>
+    <script src="./script.js" defer></script>
     <link rel="stylesheet" href="./style.css">
   </head>
   <body>
@@ -35,8 +37,8 @@
         
         <div class="ui-item">
           <label for="seaLevelRange">Sea Level:</label>
-          <input type="range" id="seaLevelRange" min="0" max="100" value="15">
-          <span id="seaValue">0.15</span>
+          <input type="range" id="seaLevelRange" min="0" max="100" value="0">
+          <span id="seaValue">0</span>
         </div>
 
         <div class="ui-item">
