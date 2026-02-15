@@ -1,5 +1,44 @@
 "use strict";
 
+const vsPlanet = `#version 300 es
+
+in vec4 a_position;
+in vec3 a_normal;
+
+uniform mat4 u_matrix;
+
+out float v_height;
+out vec3 v_normal;
+
+void main() {
+  v_height = length(a_position.xyz) - 1.0;
+  v_normal = a_normal;
+  gl_Position = u_matrix * a_position;
+}`;
+
+
+const fsPlanet = `#version 300 es
+
+precision highp float;
+
+in float v_height;
+in vec3 v_normal;
+
+uniform float u_seaLevel;
+
+out vec4 outColor;
+
+void main() {
+  if (v_height < u_seaLevel) {
+    outColor = vec4(0.0, 0.3, 0.7, 1.0);   // Mar
+  } else if (v_height < u_seaLevel + 0.05) {
+    outColor = vec4(0.9, 0.8, 0.6, 1.0);   // Praia
+  } else {
+    outColor = vec4(0.1, 0.6, 0.2, 1.0);   // Terra
+  }
+}
+`;
+
 function createBaseSphere(resolution) {
     const vertices = [];
     const indices = [];
@@ -35,7 +74,8 @@ function createBaseSphere(resolution) {
 
 function generatePlanet(sphere, noiseType, heightScale) {
 
-    const displacedVertices = [];
+    var displacedVertices = [];
+    var normals = [];
     const variation = 0.7; 
 
     for (let i = 0; i < sphere.vertices.length; i += 3) {
@@ -64,11 +104,16 @@ function generatePlanet(sphere, noiseType, heightScale) {
         displacedVertices[i]     = (x / len) * scale;
         displacedVertices[i + 1] = (y / len) * scale;
         displacedVertices[i + 2] = (z / len) * scale;
+
+        normals[i]      = (x / len);
+        normals[i + 1]  = (y / len);
+        normals[i + 2]  = (z / len);
     }
 
     return {
         vertices: new Float32Array(displacedVertices),
-        indices: new Uint32Array(sphere.indices)
+        normals: new Float32Array(normals),
+        indices: new Uint32Array(sphere.indices),
     };
 }
 

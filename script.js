@@ -3,13 +3,16 @@
 var vsPlanet = `#version 300 es
 
 in vec4 a_position;
+in vec3 a_normal;
 
 uniform mat4 u_matrix;
 
 out float v_height;
+out vec3 v_normal;
 
 void main() {
   v_height = length(a_position.xyz) - 1.0;
+  v_normal = a_normal;
   gl_Position = u_matrix * a_position;
 }`;
 
@@ -19,6 +22,7 @@ var fsPlanet = `#version 300 es
 precision highp float;
 
 in float v_height;
+in vec3 v_normal;
 
 uniform float u_seaLevel;
 
@@ -64,11 +68,11 @@ function main() {
   }
   gl.useProgram(programPlanet);
 
-  var positionAttributeLocation = gl.getAttribLocation(programPlanet, "a_position");
-  var matrixLocation = gl.getUniformLocation(programPlanet, "u_matrix");
-  const heightLocation = gl.getUniformLocation(programPlanet, "u_height");
+  const positionAttributeLocation = gl.getAttribLocation(programPlanet, "a_position");
+  const normalAttributeLocation = gl.getAttribLocation(programPlanet, "a_normal");
+
+  const matrixLocation = gl.getUniformLocation(programPlanet, "u_matrix");
   const seaLevelLocation = gl.getUniformLocation(programPlanet, "u_seaLevel");
-  const noiseTypeLocation = gl.getUniformLocation(programPlanet, "u_noiseType");
 
   var resolution = 250;
   var noiseType = 0;    // 0 = Perlin, 1 = Random
@@ -76,21 +80,12 @@ function main() {
   var baseSphere = createBaseSphere(resolution);
   var planet = generatePlanet(baseSphere, noiseType, height)
 
-  var vao = gl.createVertexArray();
-  gl.bindVertexArray(vao);
-
   var vertexBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, planet.vertices, gl.STATIC_DRAW);
-
+  var normalBuffer = gl.createBuffer();
   var indexBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, planet.indices, gl.STATIC_DRAW);
 
-  gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(positionAttributeLocation);
-
-  gl.bindVertexArray(null);
+  var vao1 = gl.createVertexArray();
+  updateVAO(vao1);
 
   var fieldOfViewRadians = degToRad(60);
   var cameraAngleRadians = degToRad(0);
@@ -114,7 +109,7 @@ function main() {
     resDisp.textContent = resolution;
     baseSphere = createBaseSphere(resolution);
     planet = generatePlanet(baseSphere, noiseType, height);
-    update();
+    renderVAO(vao1);
   });
 
   //Seletor de Ruído
@@ -124,7 +119,7 @@ function main() {
     if (e.target.value === "random") noiseType = 1;
     else if (e.target.value === "perlin") noiseType = 0;
     planet = generatePlanet(baseSphere, noiseType, height);
-    update();
+    renderVAO(vao1);
   });
 
   //Altura
@@ -135,7 +130,7 @@ function main() {
     height = parseFloat(e.target.value) / 100;
     heightDisp.textContent = height;
     planet = generatePlanet(baseSphere, noiseType, height);
-    update();
+    renderVAO(vao1);
   });
 
   //Nível do Mar
@@ -159,20 +154,28 @@ function main() {
     //update(); 
   });
 
-  function update(){
+  function updateVAO(vao){
     gl.bindVertexArray(vao);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, planet.vertices, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(positionAttributeLocation);
+    
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, planet.normals, gl.STATIC_DRAW);
+    gl.vertexAttribPointer(normalAttributeLocation, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(normalAttributeLocation);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, planet.indices, gl.STATIC_DRAW);
 
-    gl.vertexAttribPointer(positionAttributeLocation, 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(positionAttributeLocation);
-
     gl.bindVertexArray(null);
+  }
 
+  function renderVAO(vao){
+    updateVAO(vao);
     requestAnimationFrame(render);
   }
 
@@ -214,7 +217,7 @@ function main() {
 
     gl.useProgram(programPlanet);
 
-    gl.bindVertexArray(vao);
+    gl.bindVertexArray(vao1);
 
     // Compute the matrix
     var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
@@ -242,9 +245,7 @@ function main() {
     var mvpMatrix = m4.multiply(viewProjectionMatrix, modelMatrix);
 
     gl.uniformMatrix4fv(matrixLocation, false, mvpMatrix);
-    gl.uniform1f(heightLocation, height);
     gl.uniform1f(seaLevelLocation, seaLevel);
-    gl.uniform1i(noiseTypeLocation, noiseType);
 
     gl.drawElements(gl.TRIANGLES, baseSphere.indices.length, gl.UNSIGNED_INT, 0);
   }
