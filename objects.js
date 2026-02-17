@@ -1,7 +1,7 @@
 "use strict";
 
  const vsObject = `#version 300 es
-in vec4 a_position;
+layout(location = 0) in vec4 a_position;
 in vec3 a_normal;
 in vec2 a_texcoord;
 
@@ -10,10 +10,12 @@ uniform mat4 u_view;
 uniform mat4 u_world;
 uniform mat4 u_worldInverseTranspose;
 uniform vec3 u_cameraPosition;
+uniform mat4 u_lightViewProjection;
 
 out vec3 v_normal;
 out vec2 v_texcoord;
 out vec3 v_surfaceToView;
+out vec4 v_shadowCoord;
 
 void main() {
   vec4 worldPosition = u_world * a_position;
@@ -21,16 +23,20 @@ void main() {
   gl_Position = u_projection * u_view * worldPosition;
   v_normal = mat3(u_worldInverseTranspose) * a_normal;
   v_texcoord = a_texcoord;
+  v_shadowCoord = u_lightViewProjection * worldPosition;
 }
 `;
 
  const fsObject = `#version 300 es
-precision highp float;
+ precision highp sampler2DShadow;
+ precision highp float;
 
 in vec3 v_normal;
 in vec2 v_texcoord;
 in vec3 v_surfaceToView;
+in vec4 v_shadowCoord;
 
+uniform sampler2DShadow u_shadowMap;
 uniform sampler2D u_diffuseMap;
 uniform bool u_hasDiffuseMap;
 uniform vec3 u_diffuse;
@@ -40,6 +46,22 @@ uniform float u_shininess;
 uniform vec3 u_reverseLightDirection;
 
 out vec4 outColor;
+
+float getShadow() {
+    vec3 proj = v_shadowCoord.xyz / v_shadowCoord.w;
+
+    proj = proj * 0.5 + 0.5;
+
+    // fora do shadow map
+    if (proj.x < 0.0 || proj.x > 1.0 ||
+        proj.y < 0.0 || proj.y > 1.0 ||
+        proj.z < 0.0 || proj.z > 1.0) 
+        return 1.0;
+
+    float bias = 0.005;
+    
+    return texture(u_shadowMap, vec3(proj.xy, proj.z - bias));
+}
 
 void main () {
   vec3 normal = normalize(v_normal);
@@ -61,7 +83,10 @@ void main () {
 
   vec3 ambient = u_ambient * baseColor;
 
-  outColor = vec4(ambient + diffuse + specular, 1);
+  float shadow = getShadow();
+
+  vec3 color = ambient + (diffuse + specular) * shadow;
+  outColor = vec4(color, 1.0);
 }
 `;
 

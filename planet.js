@@ -2,7 +2,7 @@
 
 const vsPlanet = `#version 300 es
 
-in vec4 a_position;
+layout(location = 0) in vec4 a_position;
 in vec3 a_normal;
 
 uniform mat4 u_projection;
@@ -10,10 +10,12 @@ uniform mat4 u_view;
 uniform mat4 u_world;
 uniform mat4 u_worldInverseTranspose;
 uniform vec3 u_cameraPosition;
+uniform mat4 u_lightViewProjection;
 
 out float v_height;
 out vec3 v_normal;
 out vec3 v_surfaceToView;
+out vec4 v_shadowCoord;
 
 void main() {
 
@@ -26,20 +28,41 @@ void main() {
   v_surfaceToView = u_cameraPosition - worldPosition.xyz;
 
   gl_Position = u_projection * u_view * worldPosition;
+
+  v_shadowCoord = u_lightViewProjection * worldPosition;
 }
 `;
 
 const fsPlanet = `#version 300 es
+precision highp sampler2DShadow;
 precision highp float;
 
 in float v_height;
 in vec3 v_normal;
 in vec3 v_surfaceToView;
+in vec4 v_shadowCoord;
 
+uniform sampler2DShadow u_shadowMap;
 uniform float u_seaLevel;
 uniform vec3 u_reverseLightDirection;
 
 out vec4 outColor;
+
+float getShadow() {
+    vec3 proj = v_shadowCoord.xyz / v_shadowCoord.w;
+
+    proj = proj * 0.5 + 0.5;
+
+    // fora do shadow map
+    if (proj.x < 0.0 || proj.x > 1.0 ||
+      proj.y < 0.0 || proj.y > 1.0 ||
+      proj.z < 0.0 || proj.z > 1.0)
+      return 1.0;
+
+    float bias = 0.005;
+
+    return texture(u_shadowMap, vec3(proj.xy, proj.z - bias));
+}
 
 void main() {
 
@@ -58,7 +81,7 @@ void main() {
   vec3 viewDir = normalize(v_surfaceToView);
   vec3 halfVector = normalize(lightDir + viewDir);
 
-  vec3 ambient = vec3(0.15) * baseColor;
+  vec3 ambient = vec3(0.1) * baseColor;
 
   vec3 diffuse = max(dot(normal, lightDir), 0.0) * baseColor;
 
@@ -66,7 +89,10 @@ void main() {
   float spec = pow(specAngle, 64.0);
   vec3 specular = vec3(0.6) * spec;
 
-  outColor = vec4(ambient + diffuse + specular, 1.0);
+  float shadow = getShadow();
+
+  vec3 color = ambient + (diffuse + specular) * shadow;
+  outColor = vec4(color, 1.0);
 }
 `;
 
