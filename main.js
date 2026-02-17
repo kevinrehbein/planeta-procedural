@@ -54,44 +54,69 @@ async function main() {
     updateVAO(vao1);
 
     // ----------- OBJECTS ---------------
-    // Tell the twgl to match position with a_position etc..
-    twgl.setAttributePrefix("a_");
 
-    // compiles and links the shaders, looks up attribute and uniform locations
-    const meshProgramInfo = twgl.createProgramInfo(gl, [vsObject, fsObject]);
+    const models = {
+        tree: await loadOBJ(gl, './Assets/obj/Tree_1_A_Color1.obj', vsObject, fsObject),
+        grass: await loadOBJ(gl, './Assets/obj/Grass_2_C_Color1.obj', vsObject, fsObject),
+        rock: await loadOBJ(gl, './Assets/obj/Rock_3_A_Color1.obj', vsObject, fsObject),
+        cloud: await loadOBJ(gl, './Assets/obj/cloud.obj', vsObject, fsObject),
+    };
 
-    const response = await fetch('./Assets/obj/Tree_1_B_Color1.obj');  
-    const text = await response.text();
-    const obj = parseOBJ(text);
+    async function loadOBJ(gl, objHref, vs, fs) {
+        twgl.setAttributePrefix("a_");
 
-    const parts = obj.geometries.map(({data}) => {
+        const programObject = twgl.createProgramInfo(gl, [vs, fs]);
 
-        if (data.color) {
-        if (data.position.length === data.color.length) {
-            // it's 3. The our helper library assumes 4 so we need
-            // to tell it there are only 3.
-            data.color = { numComponents: 3, data: data.color };
+        const response = await fetch(objHref);
+        const text = await response.text();
+        const obj = parseOBJ(text);
+
+        const baseHref = new URL(objHref, window.location.href);
+
+        const matTexts = await Promise.all(
+            obj.materialLibs.map(async filename => {
+                const matHref = new URL(filename, baseHref).href;
+                const response = await fetch(matHref);
+                return response.text();
+            })
+        );
+
+        const materials = parseMTL(matTexts.join('\n'));
+
+        for (const mat of Object.values(materials)) {
+            if (mat.diffuseMap) {
+                mat.diffuseTexture = twgl.createTexture(gl, {
+                    src: new URL(mat.diffuseMap, baseHref).href,
+                    flipY: true,
+                });
+            } else {
+                mat.diffuseTexture = twgl.createTexture(gl, {
+                    src: [255, 255, 255, 255],
+                });
+            }
         }
-        } else {
-        // there are no vertex colors so just use constant white
-        data.color = { value: [1, 1, 1, 1]};
-        }
-        
-        const bufferInfo = twgl.createBufferInfoFromArrays(gl, data);
 
-        const vao = twgl.createVAOFromBufferInfo(gl, meshProgramInfo, bufferInfo);
+        const parts = obj.geometries.map(({ material, data }) => {
+            const bufferInfo = twgl.createBufferInfoFromArrays(gl, data);
+            const vao = twgl.createVAOFromBufferInfo(gl, programObject, bufferInfo);
 
-        return {
-        material: {
-            u_diffuse: [1, 1, 1, 1],
-        },
-        bufferInfo,
-        vao,
-        };
-    });
+            return {
+                bufferInfo,
+                vao,
+                material: materials[material],
+            };
+        });
+
+        return { programObject, parts };
+    }
+
 
     var objectInstances = [];
-    var objectCount = 10;
+    var treeCount = 10;
+    var rockCount = 10;
+    var grassCount = 10;
+    var cloudCount = 5;
+
     placeObjects();
 
     requestAnimationFrame(render);
@@ -145,13 +170,13 @@ async function main() {
         placeObjects();
     });
 
-    //Quantidade de Objetos
+    //Quantidade de Árvores
     const objInput = document.querySelector("#objRange");
     const objDisp = document.querySelector("#objValue");
 
-    objInput.addEventListener("input", (e) => {
-        objectCount = parseInt(e.target.value);
-        objDisp.textContent = objectCount;
+    objInput.addEventListener("change", (e) => {
+        treeCount = parseInt(e.target.value);
+        objDisp.textContent = treeCount;
         placeObjects(); 
     });
 
@@ -178,12 +203,20 @@ async function main() {
     function placeObjects() {
         objectInstances = [];
 
+        placeObj(treeCount, "tree");
+        placeObj(rockCount, "rock");
+        placeObj(grassCount, "grass");
+        placeObj(cloudCount, "cloud");
+    }
+
+    function placeObj(objectCount, type) {
+
         for (let i = 0; i < objectCount; i++) {
 
             let isSea = true;
             let index;
             let px, py, pz;
-            const maxTentativas = 1000;
+            const maxTentativas = 100000;
 
             for (let tentativa = 0; tentativa < maxTentativas; tentativa++) {
                 index = Math.floor(Math.random() * (planet.vertices.length / 3));
@@ -210,7 +243,27 @@ async function main() {
 
             const normal = normalizeVec3(n);
 
-            const offset = 0.01;
+            let offset;
+            let scale;
+
+            switch (type) {
+                case "tree":
+                    scale = m4.scaling(0.07, 0.07, 0.07);
+                    offset= 0.01
+                    break;
+                case "rock":
+                    scale = m4.scaling(0.2, 0.2, 0.2);
+                    offset = 0.01;
+                    break;
+                case "grass":
+                    scale = m4.scaling(0.2, 0.2, 0.2);
+                    offset = -0.025;
+                    break;
+                case "cloud":
+                    scale = m4.scaling(0.001, 0.001, 0.001);
+                    offset = 0.3;
+                    break;
+            }
 
             const translation = m4.translation(
             px + normal[0] * offset,
@@ -219,14 +272,16 @@ async function main() {
             );
 
             const rotation = alignYToNormal(normal);
-            const scale = m4.scaling(0.07, 0.07, 0.07);
 
             let model = m4.identity();
             model = m4.multiply(model, translation);
             model = m4.multiply(model, rotation);
             model = m4.multiply(model, scale);
 
-            objectInstances.push(model);
+            objectInstances.push({
+                model: model,
+                type: type,
+            });
         }
     }
 
@@ -273,27 +328,36 @@ async function main() {
         gl.bindVertexArray(null);
 
         // DRAW OBJECTS 
+        
+        for (const instance of objectInstances) {
 
-        gl.useProgram(meshProgramInfo.program);
+            const { model, type } = instance;
+            const modelData = models[type];
 
-        modelMatrix = m4.yRotation(time);
+            gl.useProgram(modelData.programObject.program);
 
-        const sharedUniforms = {
-            u_lightDirection: m4.normalize([-1, 3, 5]),
-            u_view: view,
-            u_projection: projection,
-        };
+            modelMatrix = m4.yRotation(time);
+            
+            twgl.setUniforms(modelData.programObject, {
+                u_lightDirection: m4.normalize([-1, 3, 5]),
+                u_view: view,
+                u_projection: projection,
+            });
 
-        twgl.setUniforms(meshProgramInfo, sharedUniforms);
-
-        for (const model of objectInstances) {
-            for (const { bufferInfo, vao, material } of parts) {
+            for (const { bufferInfo, vao, material } of modelData.parts) {
                 gl.bindVertexArray(vao);
 
-                twgl.setUniforms(meshProgramInfo, {
-                u_model: m4.multiply(modelMatrix, model),
-                u_diffuse: material.u_diffuse,
+                const diffuse = material.diffuse
+                    ? [...material.diffuse, material.opacity ?? 1]
+                    : [1, 1, 1, 1];
+
+                twgl.setUniforms(modelData.programObject, {
+                    u_model: m4.multiply(modelMatrix, model),
+                    u_diffuse: diffuse,
+                    u_diffuseMap: material.diffuseTexture,
+                    u_hasDiffuseMap: !!material.diffuseMap,
                 });
+
 
                 twgl.drawBufferInfo(gl, bufferInfo);
                 gl.bindVertexArray(null);

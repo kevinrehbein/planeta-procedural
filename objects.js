@@ -3,19 +3,19 @@
  const vsObject = `#version 300 es
 in vec4 a_position;
 in vec3 a_normal;
-in vec4 a_color;
+in vec2 a_texcoord;
 
 uniform mat4 u_projection;
 uniform mat4 u_view;
 uniform mat4 u_model;
 
 out vec3 v_normal;
-out vec4 v_color;
+out vec2 v_texcoord;
 
 void main() {
   gl_Position = u_projection * u_view * u_model * a_position;
   v_normal = mat3(u_model) * a_normal;
-  v_color = a_color;
+  v_texcoord = a_texcoord;
 }
 `;
 
@@ -23,8 +23,10 @@ void main() {
 precision highp float;
 
 in vec3 v_normal;
-in vec4 v_color;
+in vec2 v_texcoord;
 
+uniform sampler2D u_diffuseMap;
+uniform bool u_hasDiffuseMap;
 uniform vec4 u_diffuse;
 uniform vec3 u_lightDirection;
 
@@ -33,12 +35,18 @@ out vec4 outColor;
 void main () {
   vec3 normal = normalize(v_normal);
   float fakeLight = dot(u_lightDirection, normal) * .5 + .5;
-  vec4 diffuse = u_diffuse * v_color;
-  outColor = vec4(diffuse.rgb * fakeLight, diffuse.a);
+
+  vec4 baseColor = u_diffuse;
+
+  if (u_hasDiffuseMap) {
+    baseColor *= texture(u_diffuseMap, v_texcoord);
+  }
+
+  outColor = vec4(baseColor.rgb * fakeLight, baseColor.a);
 }
 `;
 
- function parseOBJ(text) {
+function parseOBJ(text) {
   // because indices are base 1 let's just fill in the 0th data
   const objPositions = [[0, 0, 0]];
   const objTexcoords = [[0, 0]];
@@ -88,7 +96,7 @@ void main () {
         position,
         texcoord,
         normal,
-        objColors,
+        color,
       ];
       geometry = {
         object,
@@ -198,4 +206,49 @@ void main () {
 
 
   return {geometries, materialLibs}
+}
+
+function parseMTL(text) {
+  const materials = {};
+  let material;
+
+  const keywords = {
+    newmtl(parts, unparsedArgs) {
+      material = {};
+      materials[unparsedArgs] = material;
+    },
+    /* eslint brace-style:0 */
+    Ns(parts)     { material.shininess      = parseFloat(parts[0]); },
+    Ka(parts)     { material.ambient        = parts.map(parseFloat); },
+    Kd(parts)     { material.diffuse        = parts.map(parseFloat); },
+    Ks(parts)     { material.specular       = parts.map(parseFloat); },
+    Ke(parts)     { material.emissive       = parts.map(parseFloat); },
+    Ni(parts)     { material.opticalDensity = parseFloat(parts[0]); },
+    d(parts)      { material.opacity        = parseFloat(parts[0]); },
+    illum(parts)  { material.illum          = parseInt(parts[0]); },
+    map_Kd(parts) { material.diffuseMap     = parts[0]},
+  };
+
+  const keywordRE = /(\w*)(?: )*(.*)/;
+  const lines = text.split('\n');
+  for (let lineNo = 0; lineNo < lines.length; ++lineNo) {
+    const line = lines[lineNo].trim();
+    if (line === '' || line.startsWith('#')) {
+      continue;
+    }
+    const m = keywordRE.exec(line);
+    if (!m) {
+      continue;
+    }
+    const [, keyword, unparsedArgs] = m;
+    const parts = line.split(/\s+/).slice(1);
+    const handler = keywords[keyword];
+    if (!handler) {
+      console.warn('unhandled keyword:', keyword);  // eslint-disable-line no-console
+      continue;
+    }
+    handler(parts, unparsedArgs);
+  }
+
+  return materials;
 }
