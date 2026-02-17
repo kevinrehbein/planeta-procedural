@@ -7,14 +7,19 @@ in vec2 a_texcoord;
 
 uniform mat4 u_projection;
 uniform mat4 u_view;
-uniform mat4 u_model;
+uniform mat4 u_world;
+uniform mat4 u_worldInverseTranspose;
+uniform vec3 u_cameraPosition;
 
 out vec3 v_normal;
 out vec2 v_texcoord;
+out vec3 v_surfaceToView;
 
 void main() {
-  gl_Position = u_projection * u_view * u_model * a_position;
-  v_normal = mat3(u_model) * a_normal;
+  vec4 worldPosition = u_world * a_position;
+  v_surfaceToView = u_cameraPosition - worldPosition.xyz;
+  gl_Position = u_projection * u_view * worldPosition;
+  v_normal = mat3(u_worldInverseTranspose) * a_normal;
   v_texcoord = a_texcoord;
 }
 `;
@@ -24,25 +29,39 @@ precision highp float;
 
 in vec3 v_normal;
 in vec2 v_texcoord;
+in vec3 v_surfaceToView;
 
 uniform sampler2D u_diffuseMap;
 uniform bool u_hasDiffuseMap;
-uniform vec4 u_diffuse;
-uniform vec3 u_lightDirection;
+uniform vec3 u_diffuse;
+uniform vec3 u_ambient;
+uniform vec3 u_specular;
+uniform float u_shininess;
+uniform vec3 u_reverseLightDirection;
 
 out vec4 outColor;
 
 void main () {
   vec3 normal = normalize(v_normal);
-  float fakeLight = dot(u_lightDirection, normal) * .5 + .5;
+  vec3 surfaceToViewDirection = normalize(v_surfaceToView);
+  vec3 lightDir = normalize(u_reverseLightDirection);
+  vec3 halfVector = normalize(lightDir + surfaceToViewDirection);
 
-  vec4 baseColor = u_diffuse;
+  vec3 baseColor = u_diffuse;
 
   if (u_hasDiffuseMap) {
-    baseColor *= texture(u_diffuseMap, v_texcoord);
+    baseColor *= texture(u_diffuseMap, v_texcoord).rgb;
   }
 
-  outColor = vec4(baseColor.rgb * fakeLight, baseColor.a);
+  vec3 diffuse = max(dot(lightDir, normal), 0.0) * baseColor;
+
+  float specAngle = max(dot(normal, halfVector), 0.0);
+
+  vec3 specular = u_specular * pow(specAngle, u_shininess);
+
+  vec3 ambient = u_ambient * baseColor;
+
+  outColor = vec4(ambient + diffuse + specular, 1);
 }
 `;
 

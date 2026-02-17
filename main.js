@@ -31,8 +31,14 @@ async function main() {
 
     const positionAttributeLocation = gl.getAttribLocation(programPlanet, "a_position");
     const normalAttributeLocation = gl.getAttribLocation(programPlanet, "a_normal");
-    const matrixLocation = gl.getUniformLocation(programPlanet, "u_matrix");
+    const worldLocation = gl.getUniformLocation(programPlanet, "u_world");
     const seaLevelLocation = gl.getUniformLocation(programPlanet, "u_seaLevel");
+    const reverseLightDirectionLocation = gl.getUniformLocation(programPlanet, "u_reverseLightDirection");
+    const worldInverseTransposeLocation = gl.getUniformLocation(programPlanet, "u_worldInverseTranspose");
+    const projectionLocation = gl.getUniformLocation(programPlanet, "u_projection");
+    const viewLocation = gl.getUniformLocation(programPlanet, "u_view");
+    const cameraPositionLocation = gl.getUniformLocation(programPlanet, "u_cameraPosition");
+
 
     var resolution = 250;
     var noiseType = 0;    // 0 = Perlin, 1 = Random
@@ -41,6 +47,7 @@ async function main() {
     var planet = generatePlanet(baseSphere, noiseType, displacement)
     var seaLevel = 0;
 
+    const lightDirection = [1, 1, 2]
     const cameraTarget = [0, 0, 0];
     const cameraPosition = [0, 0, 4];
     const zNear = 0.1;
@@ -115,7 +122,7 @@ async function main() {
     var treeCount = 10;
     var rockCount = 10;
     var grassCount = 10;
-    var cloudCount = 5;
+    var cloudCount = 10;
 
     placeObjects();
 
@@ -261,7 +268,7 @@ async function main() {
                     break;
                 case "cloud":
                     scale = m4.scaling(0.001, 0.001, 0.001);
-                    offset = 0.3;
+                    offset = 0.25;
                     break;
             }
 
@@ -296,7 +303,6 @@ async function main() {
         gl.clearColor(0.02, 0.02, 0.05, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-
         const fieldOfViewRadians = degToRad(60);
         const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
         
@@ -320,9 +326,16 @@ async function main() {
         modelMatrix = m4.yRotation(time);
 
         var mvpMatrix = m4.multiply(viewProjectionMatrix, modelMatrix);
+        var modelInverseMatrix = m4.inverse(modelMatrix);
+        var modelInverseTransposeMatrix = m4.transpose(modelInverseMatrix);
 
-        gl.uniformMatrix4fv(matrixLocation, false, mvpMatrix);
+        gl.uniformMatrix4fv(worldLocation, false, modelMatrix);
+        gl.uniformMatrix4fv(worldInverseTransposeLocation, false, modelInverseTransposeMatrix);
+        gl.uniformMatrix4fv(projectionLocation, false, projection);
+        gl.uniformMatrix4fv(viewLocation, false, view);
+        gl.uniform3fv(cameraPositionLocation, cameraPosition);
         gl.uniform1f(seaLevelLocation, seaLevel);
+        gl.uniform3fv(reverseLightDirectionLocation, m4.normalize(lightDirection));
 
         gl.drawElements(gl.TRIANGLES, baseSphere.indices.length, gl.UNSIGNED_INT, 0);
         gl.bindVertexArray(null);
@@ -336,26 +349,43 @@ async function main() {
 
             gl.useProgram(modelData.programObject.program);
 
-            modelMatrix = m4.yRotation(time);
+            var rotation = m4.yRotation(time);
             
             twgl.setUniforms(modelData.programObject, {
-                u_lightDirection: m4.normalize([-1, 3, 5]),
+                u_reverseLightDirection: m4.normalize(lightDirection),
                 u_view: view,
                 u_projection: projection,
+                u_cameraPosition: cameraPosition,
             });
 
             for (const { bufferInfo, vao, material } of modelData.parts) {
                 gl.bindVertexArray(vao);
 
                 const diffuse = material.diffuse
-                    ? [...material.diffuse, material.opacity ?? 1]
-                    : [1, 1, 1, 1];
+                    ? [...material.diffuse]
+                    : [1, 1, 1];
+                
+                const ambient = material.ambient
+                    ? [...material.ambient] : [0.2, 0.2, 0.2];
+
+                const specular = material.specular
+                    ? [...material.specular] : [0.5, 0.5, 0.5];
+
+                const shininess = material.shininess ?? 40.0;
+
+                modelMatrix = m4.multiply(rotation, model);
+                modelInverseMatrix = m4.inverse(modelMatrix);
+                modelInverseTransposeMatrix = m4.transpose(modelInverseMatrix);
 
                 twgl.setUniforms(modelData.programObject, {
-                    u_model: m4.multiply(modelMatrix, model),
+                    u_world: modelMatrix,
+                    u_worldInverseTranspose: modelInverseTransposeMatrix,
                     u_diffuse: diffuse,
                     u_diffuseMap: material.diffuseTexture,
                     u_hasDiffuseMap: !!material.diffuseMap,
+                    u_ambient: ambient,
+                    u_specular: specular,
+                    u_shininess: shininess,
                 });
 
 

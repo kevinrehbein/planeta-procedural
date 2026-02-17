@@ -2,9 +2,10 @@
 # (assimp v3.1.187496374)
 
 newmtl %%%DEFAULT
-Kd 1 1 1
-Ka 0 0 0
-Ks 0 0 0
+Ns 0
+Kd 0.7 0.7 0.7
+Ka 0.5 0.5 0.5
+Ks 0.5 0.5 0.5
 Ke 0 0 0
 d 1
 illum 1
