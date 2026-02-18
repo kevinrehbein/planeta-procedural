@@ -207,6 +207,8 @@ async function main() {
     const cameraPosition = [0, 0, 4];
     const zNear = 0.1;
     const zFar = 50;
+    var lightSpeed = 0.5;
+    var rotationSpeed = 0.001;
 
     // ------------- RENDER --------------
 
@@ -299,6 +301,24 @@ async function main() {
         cloudCount = parseInt(e.target.value);
         cloudsDisp.textContent = cloudCount;
         placeObjects(); 
+    });
+
+        //Velocidade da Luz
+    const lightspeedInput = document.querySelector("#lightspeedRange");
+    const lightspeedDisp = document.querySelector("#lightspeedValue");
+
+    lightspeedInput.addEventListener("input", (e) => {
+        lightSpeed = parseFloat(e.target.value) / 100 * 2; 
+        lightspeedDisp.textContent = e.target.value;
+    });
+
+    //Velocidade de Rotação do Planeta
+    const rotationPlanetInput = document.querySelector("#rotationPlanetRange");
+    const rotationPlanetDisp = document.querySelector("#rotationPlanetValue");
+
+    rotationPlanetInput.addEventListener("input", (e) => {
+        rotationSpeed = parseFloat(e.target.value) / 100 * 0.05;
+        rotationPlanetDisp.textContent = e.target.value;
     });
 
     function updateVAO(vao){
@@ -469,7 +489,6 @@ async function main() {
 
         twgl.resizeCanvasToDisplaySize(gl.canvas);
 
-        var lightSpeed = 0.5;
         lightPosition[0] = Math.cos(time * lightSpeed) * 5;
         lightPosition[2] = Math.sin(time * lightSpeed) * 5;
 
@@ -480,7 +499,6 @@ async function main() {
         ]);
         reverseLightDirection = [-lightDirection[0], -lightDirection[1], -lightDirection[2]];
   
-        var rotationSpeed = 0.001;
         const rotation = m4.yRotation(rotationSpeed);
         planetRotation = m4.multiply(rotation, planetRotation);
 
