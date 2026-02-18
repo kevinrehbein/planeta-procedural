@@ -6,6 +6,7 @@
     <title>Trabalho Computação Gráfica</title>
     <script src="https://webgl2fundamentals.org/webgl/resources/twgl-full.min.js"></script>
     <script src="https://webgl2fundamentals.org/webgl/resources/m4.js"></script>
+    <script src="./stars.js"></script>
     <script src="./planet.js"></script>
     <script src="./objects.js"></script>
     <script src="./main.js" defer></script>
@@ -16,35 +17,53 @@
     <div id="uiContainer">
       <div id="ui">
         <div class="ui-item">
-          <label for="resRange">Resolução:</label>
-          <input type="range" id="resRange" min="10" max="250" value="250">
+          <label for="resRange">Detail Level:</label>
+          <input type="range" id="resRange" min="20" max="250" value="250">
           <span id="resValue">250</span>
         </div>
 
         <div class="ui-item">
-          <label for="noiseSelect">Ruído:</label>
+          <label for="noiseSelect">Noise:</label>
           <select id="noiseSelect">
-            <option value="perlin">Perlin Noise</option>
-            <option value="random">Aleatório</option>
+            <option value="perlin">Perlin</option>
+            <option value="random">Random</option>
           </select>
         </div>
 
         <div class="ui-item">
-          <label for="heightRange">Height:</label>
+          <label for="heightRange">Displacement:</label>
           <input type="range" id="heightRange" min="0" max="100" value="45">
           <span id="heightValue">0.45</span>
         </div>
         
         <div class="ui-item">
           <label for="seaLevelRange">Sea Level:</label>
-          <input type="range" id="seaLevelRange" min="0" max="100" value="0">
+          <input type="range" id="seaLevelRange" min="-100" max="100" value="0">
           <span id="seaValue">0</span>
         </div>
 
         <div class="ui-item">
-          <label for="objRange">Objetos:</label>
-          <input type="range" id="objRange" min="0" max="99" value="10">
-          <span id="objValue">10</span>
+          <label for="treeRange">Trees:</label>
+          <input type="range" id="treeRange" min="0" max="50" value="10">
+          <span id="treeValue">10</span>
+        </div>
+
+        <div class="ui-item">
+          <label for="rockRange">Rocks:</label>
+          <input type="range" id="rockRange" min="0" max="50" value="10">
+          <span id="rockValue">10</span>
+        </div>
+
+        <div class="ui-item">
+          <label for="grassRange">Grasses:</label>
+          <input type="range" id="grassRange" min="0" max="50" value="10">
+          <span id="grassValue">10</span>
+        </div>
+
+        <div class="ui-item">
+          <label for="cloudRange">Clouds:</label>
+          <input type="range" id="cloudRange" min="0" max="20" value="10">
+          <span id="cloudValue">10</span>
         </div>
       </div>
     </div>

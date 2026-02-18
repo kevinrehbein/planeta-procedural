@@ -92,6 +92,28 @@ async function main() {
 
     placeObjects();
 
+    // ---------- STARS PROGRAM --------------
+
+    const starCount = 10000;
+    const starVertices = [];
+
+    for (let i = 0; i < starCount; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 30;
+        starVertices.push(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.cos(phi),
+            r * Math.sin(phi) * Math.sin(theta)
+        );
+    }
+
+    const starBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, starBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(starVertices), gl.STATIC_DRAW);
+
+    const programStars = twgl.createProgramInfo(gl, [vsStar, fsStar]);
+
     // ----------- SHADOW TEXTURE -------------
 
     const programShadowInfo = twgl.createProgramInfo(gl, [vsShadow, fsShadow]);
@@ -129,17 +151,58 @@ async function main() {
         gl.TEXTURE_2D,        // texture target
         depthTexture,         // texture
         0);                   // mip level
-    
+
+    // ------------ ANIMATION AMBIENT --------
+
+    // Estado do mouse
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    let planetRotation = m4.identity();
+
+    canvas.addEventListener('mousedown', (e) => {   
+        isDragging = true;
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+    });
+
+    canvas.addEventListener('mouseup', () => { isDragging = false; });
+    canvas.addEventListener('mouseleave', () => { isDragging = false; });
+
+    let mouse = { x: -99, y: -99 };
+
+    canvas.addEventListener('mousemove', (e) => {
+
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+        mouse.y = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
+
+        if (!isDragging) return;
+
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+
+        const sensitivity = 0.01;
+        const rotY = m4.yRotation(dx * sensitivity);
+        const rotX = m4.xRotation(dy * sensitivity);
+
+        planetRotation = m4.multiply(rotY, planetRotation);
+        planetRotation = m4.multiply(rotX, planetRotation);
+    });
+        
     //------------- CONSTANTS -------------
 
-    const lightPosition = [.5, .5, 5];
+    var lightPosition = [.5, .5, 5];
     const lightTarget = [0, 0, 0];
-    const lightDirection = [
+    var lightDirection = [
         lightTarget[0] - lightPosition[0],
         lightTarget[1] - lightPosition[1],
         lightTarget[2] - lightPosition[2],
     ];
-    const reverseLightDirection = [-lightDirection[0], -lightDirection[1], -lightDirection[2]];
+    var reverseLightDirection = [-lightDirection[0], -lightDirection[1], -lightDirection[2]];
     const cameraTarget = [0, 0, 0];
     const cameraPosition = [0, 0, 4];
     const zNear = 0.1;
@@ -199,12 +262,42 @@ async function main() {
     });
 
     //Quantidade de Árvores
-    const objInput = document.querySelector("#objRange");
-    const objDisp = document.querySelector("#objValue");
+    const treesInput = document.querySelector("#treeRange");
+    const treesDisp = document.querySelector("#treeValue");
 
-    objInput.addEventListener("change", (e) => {
+    treesInput.addEventListener("change", (e) => {
         treeCount = parseInt(e.target.value);
-        objDisp.textContent = treeCount;
+        treesDisp.textContent = treeCount;
+        placeObjects(); 
+    });
+
+    //Quantidade de Pedras
+    const rocksInput = document.querySelector("#rockRange");
+    const rocksDisp = document.querySelector("#rockValue");
+
+    rocksInput.addEventListener("change", (e) => {
+        rockCount = parseInt(e.target.value);
+        rocksDisp.textContent = rockCount;
+        placeObjects(); 
+    });
+
+    //Quantidade de Gramas
+    const grassesInput = document.querySelector("#grassRange");
+    const grassesDisp = document.querySelector("#grassValue");
+
+    grassesInput.addEventListener("change", (e) => {
+        grassCount = parseInt(e.target.value);
+        grassesDisp.textContent = grassCount;
+        placeObjects(); 
+    });
+
+    //Quantidade de Nuvens
+    const cloudsInput = document.querySelector("#cloudRange");
+    const cloudsDisp = document.querySelector("#cloudValue");
+
+    cloudsInput.addEventListener("change", (e) => {
+        cloudCount = parseInt(e.target.value);
+        cloudsDisp.textContent = cloudCount;
         placeObjects(); 
     });
 
@@ -372,8 +465,24 @@ async function main() {
 
 
     function render(time) {
-        time *= 0.001;  // convert to seconds
+        time *= 0.001;
+
         twgl.resizeCanvasToDisplaySize(gl.canvas);
+
+        var lightSpeed = 0.5;
+        lightPosition[0] = Math.cos(time * lightSpeed) * 5;
+        lightPosition[2] = Math.sin(time * lightSpeed) * 5;
+
+        lightDirection = normalizeVec3([
+            lightTarget[0] - lightPosition[0],
+            lightTarget[1] - lightPosition[1],
+            lightTarget[2] - lightPosition[2],
+        ]);
+        reverseLightDirection = [-lightDirection[0], -lightDirection[1], -lightDirection[2]];
+  
+        var rotationSpeed = 0.001;
+        const rotation = m4.yRotation(rotationSpeed);
+        planetRotation = m4.multiply(rotation, planetRotation);
 
         // -------- SHADOW MAPPING -----------
 
@@ -398,8 +507,7 @@ async function main() {
             8
         );
         var lightViewProjection = m4.multiply(lightProjection, lightView);
-
-        var rotation = m4.yRotation(time);
+        var modelMatrix;
 
         for (const instance of objectInstances) {
 
@@ -408,7 +516,8 @@ async function main() {
 
             gl.useProgram(programShadowInfo.program);
 
-            var modelMatrix = m4.multiply(rotation, model);
+            const rotation = planetRotation;
+            modelMatrix = m4.multiply(rotation, model);
             
             twgl.setUniforms(programShadowInfo, {
                 u_world: modelMatrix,
@@ -427,7 +536,7 @@ async function main() {
         gl.useProgram(programShadowInfo.program);
         gl.bindVertexArray(vao1);
 
-        modelMatrix = m4.yRotation(time);
+        modelMatrix = planetRotation;
 
         twgl.setUniforms(programShadowInfo, {
             u_world: modelMatrix,
@@ -447,13 +556,30 @@ async function main() {
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
         gl.clearColor(0.02, 0.02, 0.05, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-        
+ 
         const projection = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
 
         const camera = m4.lookAt(cameraPosition, cameraTarget, up);
 
         const view = m4.inverse(camera);
+
+        // DRAW STARS
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        gl.useProgram(programStars.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, starBuffer);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+        twgl.setUniforms(programStars, {
+            u_projection: projection,
+            u_view: view,
+            u_mouse: [mouse.x, mouse.y],
+        });
+        gl.drawArrays(gl.POINTS, 0, starCount);
+
+        gl.disable(gl.BLEND);
 
         // DRAW PLANET
 
@@ -461,7 +587,7 @@ async function main() {
 
         gl.bindVertexArray(vao1);
         
-        modelMatrix = m4.yRotation(time);
+        modelMatrix = planetRotation;
 
         var modelInverseMatrix = m4.inverse(modelMatrix);
         var modelInverseTransposeMatrix = m4.transpose(modelInverseMatrix);
@@ -487,9 +613,7 @@ async function main() {
             const modelData = models[type];
 
             gl.useProgram(modelData.programObjectInfo.program);
-
-            var rotation = m4.yRotation(time);
-            
+           
             twgl.setUniforms(modelData.programObjectInfo, {
                 u_reverseLightDirection: normalizeVec3(reverseLightDirection),
                 u_view: view,
@@ -514,7 +638,10 @@ async function main() {
 
                 const shininess = material.shininess ?? 40.0;
 
+                const rotation = planetRotation;
+    
                 modelMatrix = m4.multiply(rotation, model);
+                
                 modelInverseMatrix = m4.inverse(modelMatrix);
                 modelInverseTransposeMatrix = m4.transpose(modelInverseMatrix);
 
@@ -566,16 +693,3 @@ function normalizeVec3(v) {
   ];
   return n;
 }
-
-function normalizeVec4(v) {
-  const len = Math.hypot(v[0], v[1], v[2], v[3]);
-  const n = [
-    v[0] / len,
-    v[1] / len,
-    v[2] / len,
-    v[3] / len,
-  ];
-  return n;
-}
-
-
