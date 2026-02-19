@@ -119,7 +119,7 @@ async function main() {
     const programShadowInfo = twgl.createProgramInfo(gl, [vsShadow, fsShadow]);
 
     const depthTexture = gl.createTexture();
-    const depthTextureSize = 2048;
+    const depthTextureSize = 8192;
 
     gl.bindTexture(gl.TEXTURE_2D, depthTexture);
     gl.texImage2D(
@@ -303,8 +303,8 @@ async function main() {
             const hit = intersectTriangle(rayOrigin, rayDir, v0, v1, v2);
 
             if (hit && hit.t < closestT) {
-            closestT = hit.t;
-            closestHit = {indice0: i0, indice1:i1, indice2:i2};
+                closestT = hit.t;
+                closestHit = {indice0: i0, indice1:i1, indice2:i2};
             }
         }
 
