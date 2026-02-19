@@ -192,7 +192,163 @@ async function main() {
         planetRotation = m4.multiply(rotY, planetRotation);
         planetRotation = m4.multiply(rotX, planetRotation);
     });
+
+    canvas.addEventListener('click', (e) => {
+
+        if (!plantMode) return;
+
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width)  *  2 - 1;
+        mouse.y = ((e.clientY - rect.top)  / rect.height) * -2 + 1;
         
+        const rayOrigin = cameraPosition;
+
+        const fieldOfViewRadians = degToRad(60);
+        const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+        const projection = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
+        const camera = m4.lookAt(cameraPosition, cameraTarget, [0, 1, 0]);
+        const view = m4.inverse(camera);
+
+        // Transformar o ponto do mouse para espaço de mundo 
+        const invVP = m4.inverse(m4.multiply(projection, view));
+
+        const rayClip = [mouse.x, mouse.y, -1, 1];
+
+        const rayWorld = m4.transformVector(invVP, rayClip);
+
+        const ponto = [
+            rayWorld[0] / rayWorld[3],
+            rayWorld[1] / rayWorld[3],
+            rayWorld[2] / rayWorld[3],
+        ];
+
+        const rayDir = normalizeVec3([
+            ponto[0] - rayOrigin[0],
+            ponto[1] - rayOrigin[1],
+            ponto[2] - rayOrigin[2],
+        ]);
+
+        //Leva o raio para o espaço local do planeta (desconta a rotação)
+        const invRotation = m4.inverse(planetRotation);
+        const localOrigin = m4.transformPoint(invRotation, rayOrigin);
+        const localDir    = normalizeVec3(m4.transformDirection(invRotation, rayDir));
+
+        const hit = raycaster(localOrigin, localDir, planet.vertices, planet.indices);
+
+        console.log(hit.indice0, hit.indice1, hit.indice2);
+
+        let px = planet.vertices[hit.indice0 + 0];
+        let py = planet.vertices[hit.indice0 + 1];
+        let pz = planet.vertices[hit.indice0 + 2];
+
+        let nx = planet.normals[hit.indice0 + 0];
+        let ny = planet.normals[hit.indice0 + 1];
+        let nz = planet.normals[hit.indice0 + 2];
+
+        const n = [nx, ny, nz];
+
+        const normal = normalizeVec3(n);
+
+        let scale = m4.scaling(0.07, 0.07, 0.07);
+        let offset = 0.01;
+
+        const translation = m4.translation(
+        px + normal[0] * offset,
+        py + normal[1] * offset, 
+        pz + normal[2] * offset
+        );
+
+        const rotation = alignYToNormal(normal);
+
+        let model = m4.identity();
+        model = m4.multiply(model, translation);
+        model = m4.multiply(model, rotation);
+        model = m4.multiply(model, scale);
+
+        objectInstances.push({
+            model: model,
+            type: "tree",
+        });
+    });
+
+    function raycaster(rayOrigin, rayDir, vertices, indices) {
+
+        let closestT = Infinity;
+        let closestHit = null;
+
+        for (let i = 0; i < indices.length; i += 3) {
+
+            const i0 = indices[i] * 3;
+            const i1 = indices[i + 1] * 3;
+            const i2 = indices[i + 2] * 3;
+
+            const v0 = [
+            vertices[i0],
+            vertices[i0 + 1],
+            vertices[i0 + 2]
+            ];
+
+            const v1 = [
+            vertices[i1],
+            vertices[i1 + 1],
+            vertices[i1 + 2]
+            ];
+
+            const v2 = [
+            vertices[i2],
+            vertices[i2 + 1],
+            vertices[i2 + 2]
+            ];
+
+            const hit = intersectTriangle(rayOrigin, rayDir, v0, v1, v2);
+
+            if (hit && hit.t < closestT) {
+            closestT = hit.t;
+            closestHit = {indice0: i0, indice1:i1, indice2:i2};
+            }
+        }
+
+        return closestHit;
+    }
+
+    function intersectTriangle(rayOrigin, rayDir, v0, v1, v2) {
+
+        const EPSILON = 1e-8;
+
+        const edge1 = subtract(v1, v0);
+        const edge2 = subtract(v2, v0);
+
+        const h = m4.cross(rayDir, edge2);
+        const a = m4.dot(edge1, h);
+
+        if (a > -EPSILON && a < EPSILON) {
+            return null; // paralelo
+        }
+
+        // coordenada baricentrica u
+        const f = 1 / a;
+        const s = subtract(rayOrigin, v0);
+        const u = f * m4.dot(s, h);
+
+        if (u < 0 || u > 1) return null;
+
+        // coordenada baricentrica v
+        const q = m4.cross(s, edge1);
+        const v = f * m4.dot(rayDir, q);
+
+        if (v < 0 || u + v > 1) return null;
+
+        //dist até o ponto de interseção
+        const t = f * m4.dot(edge2, q);
+
+        if (t > EPSILON) {
+            return {t};
+        }
+
+        return null;
+    }
+
+     
     //------------- CONSTANTS -------------
 
     var lightPosition = [.5, .5, 5];
@@ -319,6 +475,13 @@ async function main() {
     rotationPlanetInput.addEventListener("input", (e) => {
         rotationSpeed = parseFloat(e.target.value) / 100 * 0.05;
         rotationPlanetDisp.textContent = e.target.value;
+    });
+
+    let plantMode = false;
+    const plantModeInput = document.querySelector("#plantMode");
+
+    plantModeInput.addEventListener("change", (e) => {
+        plantMode = e.target.checked;
     });
 
     function updateVAO(vao){
@@ -711,3 +874,5 @@ function normalizeVec3(v) {
   ];
   return n;
 }
+
+function subtract(a, b) { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
