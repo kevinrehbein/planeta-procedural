@@ -151,7 +151,7 @@ float getShadow() {
 }
 
 void main() {
-    vec3 baseColor = vec3(0.0, 0.0, 0.8);
+    vec3 baseColor = vec3(0.0, 0.0, 0.6);
 
     vec3 normal     = normalize(v_normal);
     vec3 lightDir   = normalize(u_reverseLightDirection);
