@@ -68,9 +68,7 @@ void main() {
 
   vec3 baseColor;
 
-  if (v_height < u_seaLevel) {
-    baseColor = vec3(0.0, 0.3, 0.7);
-  } else if (v_height < u_seaLevel + 0.05) {
+  if (v_height < u_seaLevel + 0.05) {
     baseColor = vec3(0.9, 0.8, 0.6);
   } else {
     baseColor = vec3(0.1, 0.6, 0.2);
@@ -96,83 +94,156 @@ void main() {
 }
 `;
 
+const vsWater = `#version 300 es
+layout(location = 0) in vec4 a_position;
+
+uniform mat4 u_projection;
+uniform mat4 u_view;
+uniform mat4 u_world;
+uniform mat4 u_worldInverseTranspose;
+uniform vec3 u_cameraPosition;
+uniform mat4 u_lightViewProjection;
+uniform float u_seaLevel;
+
+out vec3 v_normal;
+out vec3 v_surfaceToView;
+out vec4 v_shadowCoord;
+
+void main() {
+    vec4 scaledPos = a_position;
+    scaledPos.xyz *= (1.0 + u_seaLevel);
+
+    vec4 worldPosition = u_world * scaledPos;
+
+    // Normal de uma esfera = posição normalizada
+    v_normal = mat3(u_worldInverseTranspose) * normalize(a_position.xyz);
+
+    v_surfaceToView = u_cameraPosition - worldPosition.xyz;
+
+    v_shadowCoord = u_lightViewProjection * worldPosition;
+
+    gl_Position = u_projection * u_view * worldPosition;
+}`;
+
+const fsWater = `#version 300 es
+precision highp sampler2DShadow;
+precision highp float;
+
+in vec3 v_normal;
+in vec3 v_surfaceToView;
+in vec4 v_shadowCoord;
+
+uniform sampler2DShadow u_shadowMap;
+uniform vec3 u_reverseLightDirection;
+
+out vec4 outColor;
+
+float getShadow() {
+    vec3 proj = v_shadowCoord.xyz / v_shadowCoord.w;
+    proj = proj * 0.5 + 0.5;
+
+    if (proj.x < 0.0 || proj.x > 1.0 ||
+        proj.y < 0.0 || proj.y > 1.0 ||
+        proj.z < 0.0 || proj.z > 1.0)
+        return 1.0;
+
+    return texture(u_shadowMap, vec3(proj.xy, proj.z - 0.005));
+}
+
+void main() {
+    vec3 baseColor = vec3(0.0, 0.0, 0.8);
+
+    vec3 normal     = normalize(v_normal);
+    vec3 lightDir   = normalize(u_reverseLightDirection);
+    vec3 viewDir    = normalize(v_surfaceToView);
+    vec3 halfVector = normalize(lightDir + viewDir);
+
+    vec3 ambient  = vec3(0.1) * baseColor;
+    vec3 diffuse  = max(dot(normal, lightDir), 0.0) * baseColor;
+    float spec    = pow(max(dot(normal, halfVector), 0.0), 128.0);
+    vec3 specular = vec3(0.8) * spec; // reflexo mais forte na água
+
+    float shadow = getShadow();
+
+    vec3 color = ambient + (diffuse + specular) * shadow;
+    outColor = vec4(color, 0.75);
+}`;
 
 function createBaseSphere(resolution) {
-    const vertices = [];
-    const indices = [];
+  const vertices = [];
+  const indices = [];
 
-    for (let j = 0; j < resolution; j++) {
-        const v = j / resolution;
-        const theta = v * Math.PI;
+  for (let j = 0; j < resolution; j++) {
+    const v = j / resolution;
+    const theta = v * Math.PI;
 
-        for (let i = 0; i <= resolution; i++) {
-        const u = i / resolution;
-        const phi = u * 2 * Math.PI;
+    for (let i = 0; i <= resolution; i++) {
+      const u = i / resolution;
+      const phi = u * 2 * Math.PI;
 
-        const x = Math.sin(theta) * Math.cos(phi);
-        const y = Math.cos(theta);
-        const z = Math.sin(theta) * Math.sin(phi);
+      const x = Math.sin(theta) * Math.cos(phi);
+      const y = Math.cos(theta);
+      const z = Math.sin(theta) * Math.sin(phi);
 
-        vertices.push(x, y, z);
-        }
+      vertices.push(x, y, z);
     }
+  }
 
-    for (let j = 0; j < resolution; j++) {
-        for (let i = 0; i < resolution; i++) {
-        const p1 = j * (resolution + 1) + i;
-        const p2 = p1 + resolution + 1;
+  for (let j = 0; j < resolution; j++) {
+    for (let i = 0; i < resolution; i++) {
+      const p1 = j * (resolution + 1) + i;
+      const p2 = p1 + resolution + 1;
 
-        indices.push(p1, p1 + 1, p2);
-        indices.push(p1 + 1, p2 + 1, p2);
-        }
+      indices.push(p1, p1 + 1, p2);
+      indices.push(p1 + 1, p2 + 1, p2);
     }
+  }
 
-    return { vertices, indices };
+  return { vertices, indices };
 }
 
 function generatePlanet(sphere, noiseType, heightScale) {
+  var displacedVertices = [];
+  var normals = [];
+  const variation = 0.7;
 
-    var displacedVertices = [];
-    var normals = [];
-    const variation = 0.7; 
+  for (let i = 0; i < sphere.vertices.length; i += 3) {
+    let x = sphere.vertices[i];
+    let y = sphere.vertices[i + 1];
+    let z = sphere.vertices[i + 2];
 
-    for (let i = 0; i < sphere.vertices.length; i += 3) {
-        let x = sphere.vertices[i];
-        let y = sphere.vertices[i + 1];
-        let z = sphere.vertices[i + 2];
+    // Frequência do ruído
+    let nx = 2 * x;
+    let ny = 2 * y;
+    let nz = 2 * z;
 
-        // Frequência do ruído
-        let nx = 2 * x;
-        let ny = 2 * y;
-        let nz = 2 * z;
+    let noiseVal = 0;
 
-        let noiseVal = 0;
-
-        if (noiseType === 0) {
-        noiseVal = perlin(nx, ny, nz);
-        } else {
-        noiseVal = (Math.random() - 0.5) * variation;
-        }
-
-        const h = noiseVal * heightScale;
-        
-        const len = Math.sqrt(x * x + y * y + z * z);
-        const scale = (1 + h);
-
-        displacedVertices[i]     = (x / len) * scale;
-        displacedVertices[i + 1] = (y / len) * scale;
-        displacedVertices[i + 2] = (z / len) * scale;
-
-        normals[i]      = (x / len);
-        normals[i + 1]  = (y / len);
-        normals[i + 2]  = (z / len);
+    if (noiseType === 0) {
+      noiseVal = perlin(nx, ny, nz);
+    } else {
+      noiseVal = (Math.random() - 0.5) * variation;
     }
 
-    return {
-        vertices: new Float32Array(displacedVertices),
-        normals: new Float32Array(normals),
-        indices: new Uint32Array(sphere.indices),
-    };
+    const h = noiseVal * heightScale;
+
+    const len = Math.sqrt(x * x + y * y + z * z);
+    const scale = 1 + h;
+
+    displacedVertices[i] = (x / len) * scale;
+    displacedVertices[i + 1] = (y / len) * scale;
+    displacedVertices[i + 2] = (z / len) * scale;
+
+    normals[i] = x / len;
+    normals[i + 1] = y / len;
+    normals[i + 2] = z / len;
+  }
+
+  return {
+    vertices: new Float32Array(displacedVertices),
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(sphere.indices),
+  };
 }
 
 function fract(x) {
@@ -195,8 +266,8 @@ function grad(hash, x, y, z) {
 }
 
 const perm = new Uint8Array(512);
-for (let i = 0; i < 256; i++) 
-    perm[i] = perm[i + 256] = Math.floor(Math.random() * 256);
+for (let i = 0; i < 256; i++)
+  perm[i] = perm[i + 256] = Math.floor(Math.random() * 256);
 
 function perlin(x, y, z) {
   const X = Math.floor(x) & 255;
@@ -222,13 +293,21 @@ function perlin(x, y, z) {
     lerp(
       lerp(grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z), u),
       lerp(grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z), u),
-      v
+      v,
     ),
     lerp(
-      lerp(grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1), u),
-      lerp(grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1), u),
-      v
+      lerp(
+        grad(perm[AA + 1], x, y, z - 1),
+        grad(perm[BA + 1], x - 1, y, z - 1),
+        u,
+      ),
+      lerp(
+        grad(perm[AB + 1], x, y - 1, z - 1),
+        grad(perm[BB + 1], x - 1, y - 1, z - 1),
+        u,
+      ),
+      v,
     ),
-    w
+    w,
   );
 }
